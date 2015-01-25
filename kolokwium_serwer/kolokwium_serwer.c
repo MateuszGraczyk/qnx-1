@@ -21,17 +21,52 @@ struct  msg{
 void* tomulikMistrz(void* arg)
 {
 	int chid = * ((int*) arg);
-}
-
-int main(int argc, char *argv[])
-{
-	int chid; // Kanal komunikacyjny
-	pid_t pid; // PID serwera
+	printf("utworzylem watek!! chid:%d\n", chid);
 	int rcvid; // identifikator nadawcy
 	struct _msg_info info;
 	struct msg received; // odebrana wiad od klienta
 	struct msg reply; //nasza odpowiedü
 	int status = 0;
+
+	while(1)
+	{
+		/* Odebranie komunikatu */
+		rcvid = MsgReceive(chid,&received,sizeof(received),&info);
+		sleep(10);
+		printf("%d: Odebrana wiadomosc: %s\n", pthread_self(), received.buf);
+		printf("%d: Zakodowany identyfikator nadawcy i polaczenia: %d\n",pthread_self(), rcvid);
+		/* Jesli nie udalo sie pobrac wiadomosci */
+		if(rcvid == -1)
+		{
+			printf("\tS: Nie moge odebrac wiadomosci: %s\n",
+			strerror(errno));
+			break; // sprobuj odebrac inna
+		}
+
+		/* odpowiedz klientowi */
+		itoa(pthread_self(), reply.buf, 16);
+		strcat(reply.buf, " ");
+		strcat(reply.buf, received.buf);
+
+		MsgReply(rcvid,status,&reply,sizeof(reply));
+		//printf("\tS: Status serwera: %d, reply: %s\n",status,reply);
+		if(status == -1)
+		{
+			printf("\tS: Nie moge odpowiedziec: %s\n",
+			strerror(errno));
+		}
+	}
+
+	return NULL;
+}
+
+#define THREADNUM 2
+
+int main(int argc, char *argv[])
+{
+	int chid; // Kanal komunikacyjny
+	pid_t pid; // PID serwera
+
 	chid = ChannelCreate(0);
 	if (chid == -1)
 	{
@@ -47,31 +82,20 @@ int main(int argc, char *argv[])
 	fprintf(fd, "%d %d\n", pid, chid);
 	fclose(fd);
 	//koniec tworzenia pliku
-
 	printf("\tS: PID serwera: %d, CHID: %d\n", pid, chid);
-	while(1)
-	{
-		/* Odebranie komunikatu */
-		rcvid = MsgReceive(chid,&received,sizeof(received),&info);
-		printf("\tS: Odebrana wiadomosc: %s\n", received.buf);
-		printf("\tS: Zakodowany identyfikator nadawcy i polaczenia: %d\n", rcvid);
-		/* Jesli nie udalo sie pobrac wiadomosci */
-		if(rcvid == -1)
-		{
-			printf("\tS: Nie moge odebrac wiadomosci: %s\n",
-			strerror(errno));
-			break; // sprobuj odebrac inna
-		}
 
-		/* odpowiedz klientowi */
-		strcpy(reply.buf, received.buf);
-		MsgReply(rcvid,status,&reply,sizeof(reply));
-		//printf("\tS: Status serwera: %d, reply: %s\n",status,reply);
-		if(status == -1)
-		{
-			printf("\tS: Nie moge odpowiedziec: %s\n",
-			strerror(errno));
-		}
+	int newThreadID[THREADNUM];
+	int i;
+	for(i=0;i<THREADNUM;i++)
+	{
+		int rc = pthread_create(&newThreadID[i],NULL, &tomulikMistrz, (void*) &chid);
 	}
+
+	for (i=0;i<THREADNUM;i++)
+	{
+		int status;
+		int rc = pthread_join(newThreadID[i], &status);
+	}
+
 	return EXIT_SUCCESS;
 }
